@@ -7,6 +7,22 @@
 
 trait JellyStatHomepageItem
 {
+    /**
+     * Safely log a message to the JellyStat channel
+     * Prevents fatal errors if logger is not available
+     */
+    private function jellyStatLog($message, $level = 'info')
+    {
+        try {
+            $logger = $this->setLoggerChannel('JellyStat');
+            if ($logger) {
+                $logger->$level($message);
+            }
+        } catch (\Throwable $e) {
+            // Silently fail if logging fails
+        }
+    }
+
     public function jellystatSettingsArray($infoOnly = false)
     {
         $homepageInformation = [
@@ -1312,7 +1328,8 @@ trait JellyStatHomepageItem
             $this->setAPIResponse('success', 'JellyStat data retrieved successfully', 200, $stats);
             return true;
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
+            $this->jellyStatLog('JellyStat getJellyStatData error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 'error');
             $this->setAPIResponse('error', 'Failed to retrieve JellyStat data: ' . $e->getMessage(), 500);
             return false;
         }
@@ -1436,10 +1453,11 @@ trait JellyStatHomepageItem
                 $stats['users'] = $this->aggregateJellyStatUsers($allHistoryResults);
             }
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
+            $this->jellyStatLog('JellyStat fetchJellyStatStats error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 'error');
             return ['error' => true, 'message' => 'Failed to fetch JellyStat data: ' . $e->getMessage()];
         }
-        
+
         return $stats;
     }
 
@@ -1640,9 +1658,9 @@ trait JellyStatHomepageItem
         $itemStats = [];
         
         // Debug: Log sample of first few results to understand data structure
-        $this->setLoggerChannel('JellyStat')->info('JellyStat History Debug: Processing ' . count($historyResults) . ' history records');
+        $this->jellyStatLog('JellyStat History Debug: Processing ' . count($historyResults) . ' history records');
         if (count($historyResults) > 0) {
-            $this->setLoggerChannel('JellyStat')->info('JellyStat Sample Record: ' . json_encode(array_slice($historyResults, 0, 3), JSON_PRETTY_PRINT));
+            $this->jellyStatLog('JellyStat Sample Record: ' . json_encode(array_slice($historyResults, 0, 3), JSON_PRETTY_PRINT));
         }
         
         foreach ($historyResults as $index => $result) {
@@ -1743,8 +1761,8 @@ trait JellyStatHomepageItem
                         $actualItemId = $result['NowPlayingItemId'] ?? null;
                     } elseif ($contentType === 'show') {
                         // Debug: Log all available IDs for TV shows to understand data structure
-                        $this->setLoggerChannel('JellyStat')->info("JellyStat TV Show Debug - Series: {$result['SeriesName']}");
-                        $this->setLoggerChannel('JellyStat')->info("Available IDs: SeriesId=" . ($result['SeriesId'] ?? 'null') . 
+                        $this->jellyStatLog("JellyStat TV Show Debug - Series: {$result['SeriesName']}");
+                        $this->jellyStatLog("Available IDs: SeriesId=" . ($result['SeriesId'] ?? 'null') . 
                                  ", ShowId=" . ($result['ShowId'] ?? 'null') . 
                                  ", ParentId=" . ($result['ParentId'] ?? 'null') . 
                                  ", NowPlayingItemId=" . ($result['NowPlayingItemId'] ?? 'null'));
@@ -1756,23 +1774,23 @@ trait JellyStatHomepageItem
                         if (!empty($result['SeriesId'])) {
                             // SeriesId is the most reliable for series posters
                             $actualItemId = $result['SeriesId'];
-                            $this->setLoggerChannel('JellyStat')->info("Using SeriesId: {$actualItemId}");
+                            $this->jellyStatLog("Using SeriesId: {$actualItemId}");
                         } elseif (!empty($result['ShowId'])) {
                             // ShowId is also series-specific
                             $actualItemId = $result['ShowId'];
-                            $this->setLoggerChannel('JellyStat')->info("Using ShowId: {$actualItemId}");
+                            $this->jellyStatLog("Using ShowId: {$actualItemId}");
                         } elseif (!empty($result['NowPlayingItemId'])) {
                             // Try NowPlayingItemId - it might be the series ID if we're looking at series-level data
                             $actualItemId = $result['NowPlayingItemId'];
-                            $this->setLoggerChannel('JellyStat')->info("Using NowPlayingItemId: {$actualItemId}");
+                            $this->jellyStatLog("Using NowPlayingItemId: {$actualItemId}");
                         } elseif (!empty($result['ParentId'])) {
                             // Last resort: ParentId (might be series, season, or library)
                             $actualItemId = $result['ParentId'];
-                            $this->setLoggerChannel('JellyStat')->info("Using ParentId: {$actualItemId}");
+                            $this->jellyStatLog("Using ParentId: {$actualItemId}");
                         }
                         
                         if (!$actualItemId) {
-                            $this->setLoggerChannel('JellyStat')->info("No suitable ID found for TV show: {$result['SeriesName']}");
+                            $this->jellyStatLog("No suitable ID found for TV show: {$result['SeriesName']}");
                         }
                     } elseif ($contentType === 'music') {
                         // For music, use NowPlayingItemId (album/track)
@@ -1798,7 +1816,7 @@ trait JellyStatHomepageItem
                 
                 // Debug: Log each play count increment
                 if ($contentType === 'show') {
-                    $this->setLoggerChannel('JellyStat')->info("Play count increment for {$title}: now {$itemStats[$key]['play_count']} (Episode: {$result['EpisodeName']}, User: {$result['UserName']}, Date: {$result['ActivityDateInserted']})");
+                    $this->jellyStatLog("Play count increment for {$title}: now {$itemStats[$key]['play_count']} (Episode: {$result['EpisodeName']}, User: {$result['UserName']}, Date: {$result['ActivityDateInserted']})");
                 }
                 
                 // Update last played time
